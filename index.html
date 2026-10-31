@@ -226,8 +226,8 @@ function sanitize(html,wide){const t=document.createElement('template');t.innerH
 /* ================= Configuración ================= */
 const CFG={
  firebase:{apiKey:"AIzaSyArE42nx13HuxiIbBYJRf-Mwu_8jxnlnl4",authDomain:"inventario-tai.firebaseapp.com",projectId:"inventario-tai",storageBucket:"inventario-tai.firebasestorage.app",messagingSenderId:"304149994706",appId:"1:304149994706:web:85e6535d499cf1c038e10b"},
- col:{projects:'celtx_projects',profiles:'celtx_profiles'},
- portalUrl:'',            /* URL de tu página principal (portal). Si se llena, aparece «‹ Portal» */
+ col:{projects:'celtx_projects',profiles:'hub_profiles'},   /* el plan Gratis/Pro lo administra el Hub: hub_profiles/{uid} → { plan }, solo lectura aquí */
+ portalUrl:'https://lopsar.github.io/LOPsarHub/',   /* Hub: aparece «‹ Hub» y ahí se contrata el plan Pro */
  support:'',              /* correo donde recibes comprobantes de pago */
  /* Enlaces de pago: pega aquí tus Payment Links. Vacío = «pendiente de configurar» */
  pay:{stripe:{url:''},paypal:{url:''},sinpe:{number:'',holder:''},transfer:{info:''}}
@@ -280,6 +280,7 @@ async function initAuth(){S.fbOk=await loadFirebase();
   firebase.auth().onAuthStateChanged(u=>{if(u)enter({uid:u.uid,email:u.email||'',name:u.displayName||u.email||'Usuario'},CloudStore(u.uid));else if(!S.localMode){S.user=null;showAuth();}});
  }catch(e){S.fbOk=false;showAuth('Error al iniciar Firebase: '+(e.message||e));}}
 async function enter(user,store){S.user=user;S.store=store;const pr=await store.profile();S.plan=PLANS[pr.plan]?pr.plan:'free';await refreshProjects();showDash();}
+document.addEventListener('visibilitychange',async()=>{if(document.hidden||!S.user||!S.store||S.store.kind!=='cloud')return;try{const pr=await S.store.profile(),p=PLANS[pr.plan]?pr.plan:'free';if(p!==S.plan){S.plan=p;toast('Tu plan ahora es '+PLANS[p].n+'. Recarga para ver los cambios.');}}catch(e){}});
 async function refreshProjects(){try{S.projects=(await S.store.list()).sort((a,b)=>(b.updated||0)-(a.updated||0));}catch(e){S.projects=[];toast(storeMsg(e));}}
 function signOut(){flushAll();if(S.localMode){S.localMode=false;S.user=null;showAuth();return;}firebase.auth().signOut();}
 /* ================= Guion: elementos, formatos, importar/exportar ================= */
@@ -671,7 +672,7 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden)flushAll();
 addEventListener('online',()=>status('ok'));addEventListener('offline',()=>status('ok'));
 /* ---- barra superior ---- */
 function topbar(){const t=h('div',{class:'top'},h('div',{class:'logo',onclick:()=>{if(S.user)showDash();},title:'Mis proyectos'},h('i'),'Guionista'));
- if(CFG.portalUrl)t.append(h('a',{class:'btn sm',href:CFG.portalUrl,text:'‹ Portal'}));
+ if(CFG.portalUrl)t.append(h('a',{class:'btn sm',href:CFG.portalUrl,text:'‹ Hub'}));
  t.append(h('span',{class:'sp'}),h('span',{class:'stat',id:'stat'}));
  if(S.user){t.append(h('button',{class:'pill'+(S.plan==='pro'?' pro':''),style:'cursor:pointer;background:none',title:'Ver planes',onclick:()=>showPlans(),text:S.store.kind==='local'?'Modo local':'Plan '+PLANS[S.plan].n}),h('button',{class:'btn sm',title:'Atajos de teclado',onclick:showHelp,text:'Atajos'}),S.user.email?h('span',{class:'note',style:'max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap',text:S.user.email}):'',h('button',{class:'btn sm',text:'Salir',onclick:signOut}));}
  return t;}
@@ -739,19 +740,16 @@ async function openDoc(p,did,body){flushAll();if(cur&&cur.view&&cur.view.destroy
  body.textContent='';const host=h('div',{style:'height:100%;min-height:0'});body.append(host);
  cur={proj:p,doc,data,saver,ctx,view:null};status('ok');cur.view=VIEWS[doc.type](host,data,ctx)||{};
  if(doc.type==='script'||doc.type==='stage')setTimeout(()=>cur&&cur.view.focus&&cur.view.focus(),50);}
-/* ---- planes y pagos ---- */
-const PAYM=[['stripe','Tarjeta de crédito o débito'],['paypal','PayPal'],['sinpe','SINPE Móvil'],['transfer','Transferencia bancaria']];
-function showPlans(){let per=1;const box=h('div'),pay=h('div',{class:'box',hidden:true});
- const feat=(a)=>h('ul',{},a.map(x=>h('li',{text:x})));
- const draw=()=>{box.textContent='';const P=PLANS.pro,price=P.price[per];
-  box.append(h('div',{class:'plans'},
-   h('div',{class:'plan'},h('h3',{text:'Gratis'}),h('div',{class:'pr',text:'$0'}),feat(['Hasta '+PLANS.free.projects+' proyectos','Guion de cine/TV y obra de teatro','Tarjetas, notas y catálogo','Exportar a .txt y Fountain','Guardado en la nube']),h('button',{class:'btn',disabled:S.plan==='free',text:S.plan==='free'?'Tu plan actual':'Plan gratuito'})),
-   h('div',{class:'plan hot'},h('h3',{text:'Pro'}),h('div',{class:'pr',text:'$'+price+(per?' /año':' /mes')}),feat(['Proyectos ilimitados','Desglose de guion y reportes','Plan de rodaje, presupuesto y lista de planos','Guion audiovisual a 2 columnas','Exportar PDF, Final Draft (.fdx) y más','Todo lo del plan Gratis']),h('button',{class:'btn pri',disabled:S.plan==='pro',text:S.plan==='pro'?'Tu plan actual':'Elegir Pro',onclick:()=>{pay.hidden=false;drawPay();pay.scrollIntoView({behavior:'smooth'});}}))));};
- const drawPay=()=>{pay.textContent='';pay.append(h('div',{class:'lbl',text:'Método de pago'}),h('div',{class:'bar',style:'margin:8px 0'},PAYM.map(([k,l])=>h('button',{class:'btn',text:l,onclick:()=>payWith(k)}))),h('div',{id:'payinfo',class:'note'}),h('div',{class:'note',text:'Tu plan Pro se activa cuando se confirma el pago.'}),h('button',{class:'btn sm',text:'Ya pagué: actualizar mi plan',onclick:async()=>{const pr=await S.store.profile();S.plan=PLANS[pr.plan]?pr.plan:'free';toast('Plan actual: '+PLANS[S.plan].n);m.close();if(S.proj)openProject(S.proj.id,S.docId);else showDash();}}));};
- function payWith(k){const c=CFG.pay[k],info=$('#payinfo',pay);if(k==='stripe'||k==='paypal'){if(!c.url){info.textContent='Este método todavía no está configurado (falta el enlace de pago en CFG.pay.'+k+'.url).';return;}window.open(c.url+(c.url.includes('?')?'&':'?')+'client_reference_id='+encodeURIComponent(S.user.uid)+'&prefilled_email='+encodeURIComponent(S.user.email||''),'_blank','noopener');info.textContent='Se abrió la página de pago en otra pestaña.';}
-  else if(k==='sinpe'){info.textContent=c.number?'Envía el pago por SINPE Móvil al '+c.number+(c.holder?' a nombre de '+c.holder:'')+' y manda el comprobante'+(CFG.support?' a '+CFG.support:'')+' junto con tu correo de cuenta ('+(S.user.email||'')+').':'Método pendiente de configurar (CFG.pay.sinpe.number).';}
-  else info.textContent=c.info||'Método pendiente de configurar (CFG.pay.transfer.info).';}
- const m=modal([h('div',{class:'bar'},h('h2',{text:'Planes'}),h('span',{class:'sp'}),h('button',{class:'btn sm'+(!per?' on':''),text:'Mensual',onclick:()=>{per=0;draw();}}),h('button',{class:'btn sm'+(per?' on':''),text:'Anual',onclick:()=>{per=1;draw();}})),box,pay,S.store&&S.store.kind==='local'?h('div',{class:'note',text:'Modo local: todo está desbloqueado en este navegador. Los planes aplican a las cuentas en la nube.'}):null,h('button',{class:'btn ghost',text:'Cerrar',onclick:()=>m.close()})],{wide:1});draw();}
+/* ---- planes: el pago y la activación del plan Pro se hacen en el Hub ---- */
+function showPlans(){const feat=(a)=>h('ul',{},a.map(x=>h('li',{text:x})));
+ const hub=CFG.portalUrl;
+ const m=modal([h('h2',{text:'Planes'}),
+  h('div',{class:'plans'},
+   h('div',{class:'plan'},h('h3',{text:'Gratis'}),feat(['Hasta '+PLANS.free.projects+' proyectos','Guion de cine/TV y obra de teatro','Tarjetas, notas y catálogo','Exportar a .txt y Fountain','Guardado en la nube']),h('button',{class:'btn',disabled:true,text:S.plan==='free'?'Tu plan actual':'Incluido'})),
+   h('div',{class:'plan hot'},h('h3',{text:'Pro'}),feat(['Proyectos ilimitados','Desglose de guion y reportes','Plan de rodaje, presupuesto y lista de planos','Guion audiovisual a 2 columnas','Exportar PDF, Final Draft (.fdx) y más','Todo lo del plan Gratis']),
+    S.plan==='pro'?h('button',{class:'btn pri',disabled:true,text:'Tu plan actual'}):(hub?h('a',{class:'btn pri',href:hub,text:'Obtener Pro en el Hub'}):h('div',{class:'note',text:'Configura CFG.portalUrl para enlazar al Hub.'})))),
+  h('div',{class:'note',text:S.store&&S.store.kind==='local'?'Modo local: todo está desbloqueado en este navegador. El plan aplica a las cuentas en la nube.':'El plan se administra en el Hub. Al activarse, vuelve aquí y se actualiza solo.'}),
+  h('button',{class:'btn ghost',text:'Cerrar',onclick:()=>m.close()})],{wide:1});}
 function showHelp(){const T=(t,rows)=>[h('div',{class:'lbl',style:'margin-top:8px',text:t}),h('table',{class:'kt'},rows.map(([k,d])=>h('tr',{},h('td',{},h('kbd',{text:k})),h('td',{text:d}))))];
  const M=MOD;modal([h('h2',{text:'Atajos de teclado'}),h('div',{class:'note',text:'Chrome reserva Ctrl+1…8 para cambiar de pestaña del navegador; por eso los elementos también funcionan con Alt+1…8 (y con Ctrl+número si instalas la página como app).'}),
   ...T('Guion · elementos',[[M+'+0…8 / Alt+0…8','Cambia el tipo: 0 Acto · 1 Escena · 2 Acción · 3 Personaje · 4 Diálogo · 5 Paréntesis · 6 Transición · 7 Plano · 8 Texto (teatro: 2 Acotación, 7 Texto)'],['Enter','Nuevo elemento (escena→acción, personaje→diálogo, diálogo→personaje, transición→escena)'],['Tab / Shift+Tab','Cambia el tipo de la línea (acción→personaje→transición→escena; diálogo↔paréntesis)'],['Enter en línea vacía','Convierte la línea en acción']]),
